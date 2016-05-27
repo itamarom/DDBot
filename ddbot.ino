@@ -5,11 +5,6 @@ const int STATE_RUNNING = 1;
 
 const int ALIGNING_SPEED = 20;
 
-const int OFF = 90;
-const int REVERSE = 0;
-const int FORWARD = 180;
-
-const int PHOTOSWITCH_A_PIN = 12;
 const int RIGHT_PWM_PIN = 10;
 const int LEFT_PWM_PIN = 11;
 
