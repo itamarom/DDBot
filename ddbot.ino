@@ -7,7 +7,6 @@ typedef enum {
 
 const int ALIGNING_SPEED = 20;
 
-const int PHOTOSWITCH_A_PIN = 12;
 const int RIGHT_PWM_PIN = 10;
 const int LEFT_PWM_PIN = 11;
 
