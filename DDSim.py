@@ -96,16 +96,17 @@ class SpinningArm(object):
         self.angle = angle
         self.currentInput = 0
         self.switchAngle = switchAngle
+        self.switchPos = map(int, rotPoint((position[0], position[1] - 50), position, -switchAngle))
         
     def update(self):
         self.angle = (self.angle + BASE_SPEED * randfloat(0.9, 1.05) * self.currentInput * self.speedFactor) % 360
-
         
     def draw(self):
         rot_img = pygame.transform.rotate(arm_img, self.angle)
         rect = rot_img.get_rect()
         rect.center = self.position
         self.game.screen.blit(rot_img, rect)
+        pygame.draw.circle(self.game.screen, (0, 0, 255), self.switchPos, 5, 0)
         
     def setServo(self, value):
         self.currentInput = calcServoSpeed(value)
