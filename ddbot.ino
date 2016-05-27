@@ -1,4 +1,8 @@
+#ifndef SIMULATOR
 #include <Servo.h>
+#else
+#include "stub.h"
+#endif
 
 typedef enum {
   STATE_START,
@@ -6,6 +10,7 @@ typedef enum {
 } state;
 
 const int ALIGNING_SPEED = 20;
+const int RUNNING_SPEED = 80;
 
 const int RIGHT_PWM_PIN = 10;
 const int LEFT_PWM_PIN = 11;
@@ -22,6 +27,8 @@ bool rightAligned = false;
 bool leftAligned = false;
 
 state currentState = STATE_START;
+
+void displayDigit(int digit);
 
 void spin(Servo s, int speed) {
   s.write(map(speed, -100, 100, 0, 180));
@@ -58,7 +65,7 @@ void updateStart() {
     spin(rightJag, ALIGNING_SPEED);
   }
 
-  if (leftAlighed) {
+  if (leftAligned) {
     spin(leftJag, 0);
   } else {
     spin(leftJag, ALIGNING_SPEED);
@@ -89,19 +96,19 @@ void loop() {
       break;
     default:
       stopAll();
-      break
+      break;
     }
-  display_digit(currentState);
+  displayDigit(currentState);
   delay(20);
 }
 
-void clear_digit() {
+void clearDigit() {
   for (int j = 0; j < 10; j++) {
       digitalWrite(j, HIGH);
   }
 }
-void display_digit(int i) {
-  clear_digit();
+void displayDigit(int i) {
+  clearDigit();
   if (i != 1 && i != 4) {
       // TOP BAR
       digitalWrite(8, LOW);
@@ -132,3 +139,9 @@ void display_digit(int i) {
   }
 }
 
+#ifdef SIMULATOR
+int main() {
+  setup();
+  while(1) loop();
+}
+#endif
