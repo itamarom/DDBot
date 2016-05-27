@@ -2,6 +2,7 @@
 #include <Servo.h>
 #else
 #include "stub.h"
+#include <stdio.h>
 #endif
 
 typedef enum {
@@ -51,6 +52,11 @@ void setup() {
 
 const int FACTOR = 5;
 
+void transitionState(state nextState) {
+  printf("Transitioning to state %d\n", nextState);
+  currentState = nextState;
+}
+
 void updateStart() {
   if (digitalRead(SWITCH_RIGHT_PIN)) {
       rightAligned = true;
@@ -73,12 +79,19 @@ void updateStart() {
 
   if (leftAligned && rightAligned) {
     delay(DELAY_AFTER_ALIGNMENT);
-    currentState = STATE_RUNNING;
+    transitionState(STATE_RUNNING);
   }
 }
 
 void updateRunning() {
   spin(leftJag, RUNNING_SPEED);
+  // spin(rightJag, RUNNING_SPEED);
+  if (digitalRead(SWITCH_RIGHT_PIN)) {
+      printf("Crossing right switch!\n");
+  };
+  if (digitalRead(SWITCH_LEFT_PIN)) {
+      printf("Crossing left switch!\n");
+  };
 }
 
 void stopAll() {
@@ -98,7 +111,7 @@ void loop() {
       stopAll();
       break;
     }
-  displayDigit(currentState);
+  // displayDigit(currentState);
   delay(20);
 }
 
