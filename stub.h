@@ -20,3 +20,5 @@ private:
 long map(long x, long in_min, long in_max, long out_min, long out_max);
 
 void delay(int milliseconds);
+
+unsigned long micros();

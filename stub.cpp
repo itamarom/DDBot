@@ -4,18 +4,27 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include "stub.h"
 
 int sock;
+unsigned long start_time;
+
+unsigned long _micros() {
+  struct timeval tv;
+  gettimeofday(&tv,NULL);
+  return 1000000 * tv.tv_sec + tv.tv_usec;
+}
 
 __attribute__((constructor)) void init(void) {
   struct sockaddr_in serv_addr;
   int one = 1;
   int twelve = 12;
 
+  start_time = _micros();
   sock = socket(AF_INET, SOCK_STREAM, 0);
   if (setsockopt(sock, SOL_TCP, TCP_NODELAY, &one, sizeof(one)) != 0 || setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &twelve, sizeof(int)) != 0) {
     perror("Error setting buffer size to zero\n");
@@ -99,4 +108,8 @@ long map(long x, long in_min, long in_max, long out_min, long out_max){
 
 void delay(int milliseconds) {
   usleep(milliseconds * 1000);
+}
+
+unsigned long micros() {
+  return _micros() - start_time;
 }
