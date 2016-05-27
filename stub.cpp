@@ -1,4 +1,5 @@
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,8 +13,16 @@ int sock;
 
 __attribute__((constructor)) void init(void) {
   struct sockaddr_in serv_addr;
+  int one = 1;
+  int twelve = 12;
 
   sock = socket(AF_INET, SOCK_STREAM, 0);
+  if (setsockopt(sock, SOL_TCP, TCP_NODELAY, &one, sizeof(one)) != 0 || setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &twelve, sizeof(int)) != 0) {
+    perror("Error setting buffer size to zero\n");
+    exit(1);
+  }
+
+
   if (sock < 0) {
     perror("Error opening socket");
     exit(1);
@@ -61,17 +70,16 @@ typedef struct {
 int digitalRead(int pin) {
   int result;
   packet p = {READ_PIN, pin};
-  printf("Reading from pin %d\n", pin);
+  // printf("Reading from pin %d\n", pin);
   write(sock, &p, sizeof(p));
 
   read(sock, &result, sizeof(result));
-  printf("Read %d\n", result);
   return result;
 }
 
 void digitalWrite(int pin, int value) {
   packet p = {WRITE_PIN, pin, value};
-  printf("Writing %d to pin %d\n", value, pin);
+  // printf("Writing %d to pin %d\n", value, pin);
   write(sock, &p, sizeof(p));
 }
 
@@ -81,7 +89,7 @@ void Servo::attach(int pin) {
 
 void Servo::write(int value) {
   packet p = {WRITE_SERVO, this->pin, value};
-  printf("Writing %d to servo at pin %d\n", value, this->pin);
+  // printf("Writing %d to servo at pin %d\n", value, this->pin);
   ::write(sock, &p, sizeof(p));
 }
 
