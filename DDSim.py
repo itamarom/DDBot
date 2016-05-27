@@ -6,6 +6,7 @@ import pygame
 import socket
 import struct
 import select
+import win32api
 
 SERVER_PORT = 1337
 
@@ -113,6 +114,13 @@ class SpinningArm(object):
         
     def getMicroswitchValue(self):
         return int(abs(self.angle - self.switchAngle) < MICROSWITCH_ANGLE_RANGE)
+        
+class KeyState(object):
+    def __init__(self, vkey):
+        self.vkey = vkey
+        
+    def get(self):
+        return win32api.GetAsyncKeyState(vkey)
   
 class DDBot(Game):
     def __init__(self):
