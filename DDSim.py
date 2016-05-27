@@ -28,9 +28,9 @@ BGCOLOR = (255, 255, 255)
 
 LOOP_MS = 20
 
-BASE_SPEED = 6
+BASE_SPEED = 8
 
-MICROSWITCH_ANGLE_RANGE = 10
+MICROSWITCH_ANGLE_RANGE = 15
 
 randfloat = random.uniform
 
@@ -101,6 +101,7 @@ class SpinningArm(object):
         
     def update(self):
         self.angle = (self.angle + BASE_SPEED * randfloat(0.97, 1.03) * self.currentInput * self.speedFactor) % 360
+        # self.angle = (self.angle + BASE_SPEED * self.currentInput * self.speedFactor) % 360
         
     def draw(self):
         rot_img = pygame.transform.rotate(arm_img, self.angle)
