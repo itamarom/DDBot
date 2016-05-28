@@ -1,3 +1,6 @@
+#include <stdint.h>
+#include <string>
+
 void pinMode(int pin, int type);
 int digitalRead(int pin);
 void digitalWrite(int pin, int value);
@@ -17,8 +20,21 @@ private:
     int pin;
 };
 
+class Serial
+{
+public:
+    int available();
+    void begin(int speed);
+    void write(char value);
+    void write(std::string str);
+    void write(char *buf, int len);
+    void readBytes(char *buf, int len);
+private:
+    int sock;
+};
+
 long map(long x, long in_min, long in_max, long out_min, long out_max);
 
 void delay(int milliseconds);
 
-unsigned long micros();
+uint32_t micros();
