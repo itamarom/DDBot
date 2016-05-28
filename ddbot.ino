@@ -125,26 +125,29 @@ void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
   if (self->lastDelta != 0 && (delta < .2 * self->lastDelta || delta > 1.5 * self->lastDelta)) {
     self->badDeltaCount += 1;
     if (self->badDeltaCount < 3) {
-      // printf("not adjusting speed (last was %ld)\n", self->lastDelta);
+      printf("not adjusting speed (last was %ld)\n", self->lastDelta);
       return;
     }
   }
-  // printf("adjusting speed\n");
   self->badDeltaCount = 0;
 
   if (delta < 0.7 * TARGET_TIME) {
+    printf("Way too fast %c...\n", selfArm->id);
     self->speed -= 2;
   } else if (delta < TARGET_TIME) {
+    printf("Too fast %c...\n", selfArm->id);
     self->speed -= 1;
   } else if (delta > TARGET_TIME * 1.5) {
+    printf("Way too slow %c...\n", selfArm->id);
     self->speed += 2;
   } else {
+    printf("Too slow %c...\n", selfArm->id);
     self->speed += 1;
   }
 
   if (now - other->lastSeen < delta * 0.5 && now - other->lastSeen > delta * 0.1) {
     printf("Adjusting speed! Give a kick to %c...\n", selfArm->id);
-    self->tempBonus = 10;
+    self->tempBonus = 5;
     self->frameCount = 20;
     other->tempBonus = 0;
     other->frameCount = 0;
