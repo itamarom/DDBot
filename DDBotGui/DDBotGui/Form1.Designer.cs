@@ -108,6 +108,7 @@
             // 
             this.leftSpeedTb.Location = new System.Drawing.Point(273, 147);
             this.leftSpeedTb.Maximum = 101;
+            this.leftSpeedTb.Minimum = -100;
             this.leftSpeedTb.Name = "leftSpeedTb";
             this.leftSpeedTb.Size = new System.Drawing.Size(384, 45);
             this.leftSpeedTb.TabIndex = 3;
@@ -165,6 +166,7 @@
             // 
             this.rightSpeedTb.Location = new System.Drawing.Point(273, 195);
             this.rightSpeedTb.Maximum = 101;
+            this.rightSpeedTb.Minimum = -100;
             this.rightSpeedTb.Name = "rightSpeedTb";
             this.rightSpeedTb.Size = new System.Drawing.Size(384, 45);
             this.rightSpeedTb.TabIndex = 3;

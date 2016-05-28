@@ -12,7 +12,6 @@ using System.Net.Sockets;
 
 namespace DDBotGui
 {
-
     enum Requests
     {
         SERIAL_REQUEST_LEFT_POWER,
@@ -222,6 +221,18 @@ namespace DDBotGui
 
         }
 
+        private void setLeftTb(int value)
+        {
+            leftSpeedTb.Value = value;
+            leftSpeedLbl.Text = value.ToString();
+        }
+
+        private void setRightTb(int value)
+        {
+            rightSpeedTb.Value = value;
+            rightSpeedLbl.Text = value.ToString();
+        }
+
         private void trackBar1_Scroll(object sender, EventArgs e)
         {
             if (sender == leftSpeedTb)
@@ -359,8 +370,8 @@ namespace DDBotGui
 
                             if (updateSpeed)
                             {
-                                rightSpeedTb.Value = rightPower;
-                                leftSpeedTb.Value = leftPower;
+                                setLeftTb(leftPower);
+                                setRightTb(rightPower);
                             }
                         });
                 }
@@ -411,15 +422,15 @@ namespace DDBotGui
         private void stopBtn_Click(object sender, EventArgs e)
         {
             SendCommand(Requests.SERIAL_UPDATE_STATE, (byte)States.STOPPED);
-            leftSpeedTb.Value = 0;
-            rightSpeedTb.Value = 0;
+            setLeftTb(0);
+            setRightTb(0);
         }
 
         private void manualBtn_Click(object sender, EventArgs e)
         {
             SendCommand(Requests.SERIAL_UPDATE_STATE, (byte)States.MANUAL);
-            leftSpeedTb.Value = 0;
-            rightSpeedTb.Value = 0;
+            setLeftTb(0);
+            setRightTb(0);
         }
 
         private void restartBtn_Click(object sender, EventArgs e)
