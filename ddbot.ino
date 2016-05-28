@@ -1,16 +1,21 @@
 #ifndef SIMULATOR
 #include <Servo.h>
 #else
-#include "stub.h"
+#include <algorithm>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "stub.h"
 Serial Serial;
 #endif
 
 typedef enum {
   STATE_START,
   STATE_RUNNING,
+  STATE_MANUAL,
+  STATE_STOPPED,
 } state;
 
 typedef enum {
@@ -21,6 +26,8 @@ typedef enum {
   SERIAL_UPDATE_LEFT_SPEED   = 4,
   SERIAL_UPDATE_RIGHT_SPEED  = 5,
   SERIAL_UPDATE_TARGET_SPEED = 6,
+  SERIAL_REQUEST_STATE = 7,
+  SERIAL_UPDATE_STATE = 8,
 } serial_commands;
 
 const int ALIGNING_SPEED = 20;
@@ -33,21 +40,21 @@ const int LEFT_SWITCH_PIN = 12;
 const int RIGHT_SWITCH_PIN = 13;
 
 const int DELAY_AFTER_ALIGNMENT = 3000;
-unsigned long targetTime = 1000000;
+uint32_t targetTime = 1000000;
 
 struct Arm {
   char id;
   Servo jag;
   int switchPort;
+  char speed;
 
   struct alignState {
     bool isAligned;
   } alignState;
   struct spinState {
-    int speed;
-    unsigned long lastSeen;
-    unsigned long lastDelta;
-    unsigned long badDeltaCount;
+    uint32_t lastSeen;
+    uint32_t lastDelta;
+    uint32_t badDeltaCount;
     int tempBonus;
     int frameCount;
   } spinState;
@@ -56,23 +63,22 @@ struct Arm {
 struct Arm leftArm;
 struct Arm rightArm;
 
-state currentState = STATE_START;
+state currentState;
 
 void displayDigit(int digit);
 
-void spin(Servo s, int speed) {
-  speed = map(speed, -100, 100, 0, 180);
+void spin(struct Arm *arm) {
+  int speed = map(arm->speed + arm->spinState.tempBonus, -100, 100, 0, 180);
 
   // As long as the input speed is between -100 and 100 this should
   // never happen
   // Double check anyways since BAD things will happen if this goes wrong.
-  // Also, we never enforce the input speed places in the code
   if (speed < 0) {
     speed = 0;
   } else if (speed > 180) {
     speed = 180;
   }
-  s.write(speed);
+  arm->jag.write(speed);
 }
 
 void initArm(Arm* arm, char id, int jagPort, int switchPort) {
@@ -83,7 +89,29 @@ void initArm(Arm* arm, char id, int jagPort, int switchPort) {
   pinMode(switchPort, INPUT);
 
   arm->jag.attach(jagPort);
-  spin(arm->jag, 0);
+}
+
+void transitionState(state nextState) {
+  printf("Transitioning to state %d\n", nextState);
+  currentState = nextState;
+
+  memset(&leftArm.alignState, 0, sizeof(leftArm.alignState));
+  memset(&rightArm.alignState, 0, sizeof(rightArm.alignState));
+  memset(&leftArm.spinState, 0, sizeof(leftArm.spinState));
+  memset(&rightArm.spinState, 0, sizeof(rightArm.spinState));
+
+  switch(nextState) {
+    case STATE_START:
+      leftArm.speed = rightArm.speed = ALIGNING_SPEED;
+      break;
+
+    case STATE_RUNNING:
+      leftArm.speed = rightArm.speed = BASE_RUNNING_SPEED;
+      break;
+
+    default:
+      break;
+  }
 }
 
 void setup() {
@@ -95,51 +123,33 @@ void setup() {
   Serial.write("HELO");
   initArm(&leftArm,  'L', LEFT_PWM_PIN,  LEFT_SWITCH_PIN);
   initArm(&rightArm, 'R', RIGHT_PWM_PIN, RIGHT_SWITCH_PIN);
-}
 
-const int FACTOR = 5;
-
-void transitionState(state nextState) {
-  printf("Transitioning to state %d\n", nextState);
-  currentState = nextState;
+  transitionState(STATE_START);
 }
 
 void alignArm(struct Arm *arm) {
   if (digitalRead(arm->switchPort)) {
     arm->alignState.isAligned = true;
-  }
-
-  if (arm->alignState.isAligned) {
-    spin(arm->jag, 0);
-  } else {
-    spin(arm->jag, ALIGNING_SPEED);
+    arm->speed = 0;
+    spin(arm);
   }
 }
 
 void updateStart() {
-  static bool initOnNextRun = true;
-
-  if (initOnNextRun) {
-    memset(&leftArm.alignState, 0, sizeof(leftArm.alignState));
-    memset(&rightArm.alignState, 0, sizeof(rightArm.alignState));
-    initOnNextRun = false;
-  }
-
   alignArm(&leftArm);
   alignArm(&rightArm);
 
   if (leftArm.alignState.isAligned && rightArm.alignState.isAligned) {
     delay(DELAY_AFTER_ALIGNMENT);
     transitionState(STATE_RUNNING);
-    initOnNextRun = true;
   }
 }
 
-void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
+void onSwitchHit(uint32_t now, struct Arm *selfArm, struct Arm *otherArm) {
   struct Arm::spinState *self = &selfArm->spinState;
   struct Arm::spinState *other = &otherArm->spinState;
 
-  unsigned long delta = now - self->lastSeen;
+  uint32_t delta = now - self->lastSeen;
   if (delta < 100000) {
     // Ignore small deltas, they are probably the same button press.
     // If not, god help us all.
@@ -149,32 +159,38 @@ void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
   if (self->lastDelta != 0 && (delta < .2 * self->lastDelta || delta > 1.5 * self->lastDelta)) {
     self->badDeltaCount += 1;
     if (self->badDeltaCount < 3) {
-      printf("not adjusting speed (last was %ld)\n", self->lastDelta);
+      printf("not adjusting speed (last was %ld)\n", (unsigned long)self->lastDelta);
       return;
     }
   }
   self->badDeltaCount = 0;
 
   if (delta < 0.7 * targetTime) {
-    printf("Way too fast %c...\n", selfArm->id);
-    self->speed -= 2;
+    // printf("Way too fast %c...\n", selfArm->id);
+    selfArm->speed -= 2;
   } else if (delta < targetTime) {
-    printf("Too fast %c...\n", selfArm->id);
-    self->speed -= 1;
+    // printf("Too fast %c...\n", selfArm->id);
+    selfArm->speed -= 1;
   } else if (delta > targetTime * 1.5) {
-    printf("Way too slow %c...\n", selfArm->id);
-    self->speed += 2;
+    // printf("Way too slow %c...\n", selfArm->id);
+    selfArm->speed += 2;
   } else {
-    printf("Too slow %c...\n", selfArm->id);
-    self->speed += 1;
+    // printf("Too slow %c...\n", selfArm->id);
+    selfArm->speed += 1;
+  }
+
+  if (selfArm->speed < 0) {
+    selfArm->speed = 0;
+  } else if (selfArm->speed > 100) {
+    selfArm->speed = 100;
   }
 
   if (now - other->lastSeen < delta * 0.5 && now - other->lastSeen > delta * 0.15) {
     printf("Adjusting speed! Give a kick to %c...\n", selfArm->id);
-    self->tempBonus = 10;
-    self->frameCount = 30;
-    other->tempBonus = -10;
-    other->frameCount = 30;
+    self->tempBonus = 5;
+    self->frameCount = 10;
+    other->tempBonus = -5;
+    other->frameCount = 10;
   } else {
     printf("Synced! %f\n", (now - other->lastSeen)/(double)(delta));
   }
@@ -183,10 +199,8 @@ void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
   self->lastSeen = now;
 }
 
-void updateRunningArm(unsigned long now, struct Arm* self, struct Arm* other) {
+void updateRunningArm(uint32_t now, struct Arm* self, struct Arm* other) {
   struct Arm::spinState *spinState = &self->spinState;
-
-  spin(self->jag, spinState->speed + spinState->tempBonus);
 
   if (spinState->frameCount) {
     if(--spinState->frameCount <= 0) {
@@ -200,48 +214,33 @@ void updateRunningArm(unsigned long now, struct Arm* self, struct Arm* other) {
 }
 
 void updateRunning() {
-  static bool initOnNextRun = true;
-  unsigned long now = micros();
-
-  if (initOnNextRun) {
-    memset(&leftArm.spinState, 0, sizeof(leftArm.spinState));
-    memset(&rightArm.spinState, 0, sizeof(rightArm.spinState));
-
-    leftArm.spinState.speed = rightArm.spinState.speed = BASE_RUNNING_SPEED;
-    initOnNextRun = false;
-  }
+  uint32_t now = micros();
 
   updateRunningArm(now, &leftArm, &rightArm);
   updateRunningArm(now, &rightArm, &leftArm);
 
-  if (abs(leftArm.spinState.speed - rightArm.spinState.speed) > 40) {
+  if (abs(leftArm.speed - rightArm.speed) > 40) {
     transitionState(STATE_START);
-    initOnNextRun = true;
   }
   if (rand() % 10 == 0)
-    printf("Right: %d, Left: %d\n", leftArm.spinState.speed, rightArm.spinState.speed);
-}
-
-void stopAll() {
-  spin(leftArm.jag, 0);
-  spin(rightArm.jag, 0);
+    printf("Right: %d, Left: %d\n", leftArm.speed, rightArm.speed);
 }
 
 void handleSerial() {
-  unsigned long command;
-  unsigned long value;
+  char command;
+  char value;
   if (!Serial.available()) {
     return;
   }
 
-  Serial.readBytes((char*)&command, sizeof(command));
-  Serial.readBytes((char*)&value, sizeof(value));
+  Serial.readBytes(&command, sizeof(command));
+  Serial.readBytes(&value, sizeof(value));
   switch(command) {
     case SERIAL_REQUEST_LEFT_POWER:
-      Serial.write((char)leftArm.spinState.speed);
+      Serial.write(leftArm.speed);
       break;
     case SERIAL_REQUEST_RIGHT_POWER:
-      Serial.write((char)rightArm.spinState.speed);
+      Serial.write(rightArm.speed);
       break;
     case SERIAL_REQUEST_LEFT_DELTA:
       Serial.write((char*)&leftArm.spinState.lastDelta, sizeof(leftArm.spinState.lastDelta));
@@ -250,13 +249,18 @@ void handleSerial() {
       Serial.write((char*)&rightArm.spinState.lastDelta, sizeof(rightArm.spinState.lastDelta));
       break;
     case SERIAL_UPDATE_LEFT_SPEED:
-      leftArm.spinState.speed = value;
+      leftArm.speed = value;
       break;
     case SERIAL_UPDATE_RIGHT_SPEED:
-      rightArm.spinState.speed = value;
+      rightArm.speed = value;
       break;
     case SERIAL_UPDATE_TARGET_SPEED:
       targetTime = value;
+    case SERIAL_REQUEST_STATE:
+      Serial.write((char)currentState);
+      break;
+    case SERIAL_UPDATE_STATE:
+      transitionState((state)value);
       break;
   }
 }
@@ -269,10 +273,16 @@ void loop() {
     case STATE_RUNNING:
       updateRunning();
       break;
+    case STATE_MANUAL:
+      break;
+    case STATE_STOPPED:
     default:
-      stopAll();
+      leftArm.speed = rightArm.speed = 0;
       break;
   }
+
+  spin(&leftArm);
+  spin(&rightArm);
   // displayDigit(currentState);
 
   handleSerial();

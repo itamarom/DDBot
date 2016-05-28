@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -12,12 +13,12 @@
 
 #include "stub.h"
 
-const char IP[] = "127.0.0.1";
-// "10.133.7.101"
+// const char IP[] = "127.0.0.1";
+const char IP[] = "10.133.7.101";
 int sock;
-unsigned long start_time;
+uint32_t start_time;
 
-unsigned long _micros() {
+uint32_t _micros() {
   struct timeval tv;
   gettimeofday(&tv,NULL);
   return 1000000 * tv.tv_sec + tv.tv_usec;
@@ -43,7 +44,7 @@ int init_sock(const char *ip, int port) {
   memset(&serv_addr, 0, sizeof(serv_addr));
 
   serv_addr.sin_family = AF_INET;
-  serv_addr.sin_port = htons(1337);
+  serv_addr.sin_port = htons(port);
 
   if(inet_pton(AF_INET, IP, &serv_addr.sin_addr) <= 0)
   {
@@ -113,12 +114,19 @@ void Servo::write(int value) {
 void Serial::begin(int speed) {
   this->sock = -1;
   printf("Connecting to serial port\n");
-  // this->sock = init_sock(IP, 1338);
+  this->sock = init_sock(IP, 1338);
 }
 
 int Serial::available() {
   fd_set set;
   struct timeval timeout;
+  int n = 0;
+
+  if (this->sock == -1) {
+    printf("Reconnecting to serial\n");
+    begin(9600);
+    this->write("HELO");
+  }
 
   FD_ZERO (&set);
   FD_SET (this->sock, &set);
@@ -127,7 +135,15 @@ int Serial::available() {
   timeout.tv_usec = 0;
 
   select(this->sock + 1, &set, NULL, NULL, &timeout);
-  return FD_ISSET(this->sock, &set);
+  if (FD_ISSET(this->sock, &set)) {
+    ioctl(sock, FIONREAD, &n);
+    if (n == 0) {
+      close(this->sock);
+      this->sock = -1;
+    }
+    return n;
+  }
+  return 0;
 }
 
 void Serial::write(char value) {
@@ -154,7 +170,7 @@ void delay(int milliseconds) {
   usleep(milliseconds * 1000);
 }
 
-unsigned long micros() {
+uint32_t micros() {
   return _micros() - start_time;
 }
 
