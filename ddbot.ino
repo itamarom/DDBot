@@ -16,6 +16,7 @@ typedef enum {
   STATE_RUNNING,
   STATE_MANUAL,
   STATE_STOPPED,
+  STATE_DELAY,
 } state;
 
 typedef enum {
@@ -36,11 +37,16 @@ const int BASE_RUNNING_SPEED = 80;
 const int RIGHT_PWM_PIN = 10;
 const int LEFT_PWM_PIN = 11;
 
-const int LEFT_SWITCH_PIN = 12;
-const int RIGHT_SWITCH_PIN = 13;
+const int RIGHT_SWITCH_PIN = 3;
+const int LEFT_SWITCH_PIN = 2;
 
 const int DELAY_AFTER_ALIGNMENT = 3000;
 uint32_t targetTime = 1000000;
+
+int currentDelay = 0;
+
+volatile bool leftButtonHit = false;
+volatile bool rightButtonHit = false;
 
 struct Arm {
   char id;
@@ -82,7 +88,6 @@ void spin(struct Arm *arm) {
 }
 
 void initArm(Arm* arm, char id, int jagPort, int switchPort) {
-  memset(arm, 0, sizeof(*arm));
   arm->id = id;
 
   arm->switchPort = switchPort;
@@ -114,17 +119,31 @@ void transitionState(state nextState) {
   }
 }
 
+void leftInterrupt() {
+  leftButtonHit = true;
+}
+
+void rightInterrupt() {
+  rightButtonHit = true;
+}
+
 void setup() {
-  for (int i=2; i < 10; i++) {
+  for (int i=4; i < 10; i++) {
     pinMode(i, OUTPUT);
   }
+  pinMode(12, OUTPUT);
+  pinMode(13, OUTPUT);
 
   Serial.begin(9600);
   Serial.write("HELO");
   initArm(&leftArm,  'L', LEFT_PWM_PIN,  LEFT_SWITCH_PIN);
   initArm(&rightArm, 'R', RIGHT_PWM_PIN, RIGHT_SWITCH_PIN);
+  leftArm.speed = rightArm.speed = 0;
 
-  transitionState(STATE_START);
+  transitionState(STATE_MANUAL);
+
+  attachInterrupt(digitalPinToInterrupt(leftArm.switchPort), leftInterrupt, RISING);
+  attachInterrupt(digitalPinToInterrupt(rightArm.switchPort), rightInterrupt, RISING);
 }
 
 void alignArm(struct Arm *arm) {
@@ -140,8 +159,8 @@ void updateStart() {
   alignArm(&rightArm);
 
   if (leftArm.alignState.isAligned && rightArm.alignState.isAligned) {
-    delay(DELAY_AFTER_ALIGNMENT);
-    transitionState(STATE_RUNNING);
+    currentDelay = DELAY_AFTER_ALIGNMENT;
+    transitionState(STATE_DELAY);
   }
 }
 
@@ -187,10 +206,11 @@ void onSwitchHit(uint32_t now, struct Arm *selfArm, struct Arm *otherArm) {
 
   if (now - other->lastSeen < delta * 0.5 && now - other->lastSeen > delta * 0.15) {
     printf("Adjusting speed! Give a kick to %c...\n", selfArm->id);
-    self->tempBonus = 5;
-    self->frameCount = 10;
-    other->tempBonus = -5;
-    other->frameCount = 10;
+    // TODO: Play
+    self->tempBonus = 10;
+    self->frameCount = 5;
+    other->tempBonus = -10;
+    other->frameCount = 5;
   } else {
     printf("Synced! %f\n", (now - other->lastSeen)/(double)(delta));
   }
@@ -199,7 +219,7 @@ void onSwitchHit(uint32_t now, struct Arm *selfArm, struct Arm *otherArm) {
   self->lastSeen = now;
 }
 
-void updateRunningArm(uint32_t now, struct Arm* self, struct Arm* other) {
+void updateRunningArm(uint32_t now, struct Arm* self, struct Arm* other, volatile bool* hit) {
   struct Arm::spinState *spinState = &self->spinState;
 
   if (spinState->frameCount) {
@@ -208,16 +228,17 @@ void updateRunningArm(uint32_t now, struct Arm* self, struct Arm* other) {
     }
   }
 
-  if (digitalRead(self->switchPort)) {
+  if (*hit) {
     onSwitchHit(now, self, other);
+    *hit = false;
   }
 }
 
 void updateRunning() {
   uint32_t now = micros();
 
-  updateRunningArm(now, &leftArm, &rightArm);
-  updateRunningArm(now, &rightArm, &leftArm);
+  updateRunningArm(now, &leftArm, &rightArm, &leftButtonHit);
+  updateRunningArm(now, &rightArm, &leftArm, &rightButtonHit);
 
   if (abs(leftArm.speed - rightArm.speed) > 40) {
     transitionState(STATE_START);
@@ -265,6 +286,14 @@ void handleSerial() {
   }
 }
 
+void handle_delay() {
+  currentDelay -= 20;
+  displayDigit(currentDelay / 1000);
+  if (currentDelay <= 0) {
+    transitionState(STATE_RUNNING);
+  }
+}
+
 void loop() {
   switch (currentState) {
     case STATE_START:
@@ -275,6 +304,9 @@ void loop() {
       break;
     case STATE_MANUAL:
       break;
+    case STATE_DELAY:
+      handle_delay();
+      break;
     case STATE_STOPPED:
     default:
       leftArm.speed = rightArm.speed = 0;
@@ -283,16 +315,17 @@ void loop() {
 
   spin(&leftArm);
   spin(&rightArm);
-  // displayDigit(currentState);
 
   handleSerial();
   delay(20);
 }
 
 void clearDigit() {
-  for (int j = 0; j < 10; j++) {
+  for (int j = 4; j < 10; j++) {
     digitalWrite(j, HIGH);
   }
+  digitalWrite(12, HIGH);
+  digitalWrite(13, HIGH);
 }
 
 void displayDigit(int i) {
@@ -311,7 +344,7 @@ void displayDigit(int i) {
   }
   if (i != 0 && i != 1 && i != 7) {
     // MIDDLE
-    digitalWrite(3, LOW);
+    digitalWrite(13, LOW);
   }
   if (i == 0 || i == 2 || i == 6 || i == 8) {
     // BOTTOM LEFT
@@ -319,7 +352,7 @@ void displayDigit(int i) {
   }
   if (i != 2) {
     // BOTTOM RIGHT
-    digitalWrite(2, LOW);
+    digitalWrite(12, LOW);
   }
   if (i != 1 && i != 4 && i != 7) {
     // BOTTOM
