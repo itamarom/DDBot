@@ -160,17 +160,22 @@ namespace DDBotGui
         {
             try
             {
-                string[] ports = SerialPort.GetPortNames();
+                // string[] ports = SerialPort.GetPortNames();
+                string[] ports = new string[] {"/dev/ttyACM0"};
                 setStatus("Enumerating serial ports...", Color.Yellow);
                 foreach (string port in ports)
                 {
+                    log("Trying " + port);
                     currentPort = new SerialPort(port, 9600);
                     if (DetectArduino())
                     {
                         setStatus("Connected to serial", Color.Green);
-                        break;
+                        setIsConnected(true);
+                        StartTimer();
+                        return;
                     }
                 }
+                setStatus("No serial port found", Color.Red);
             }
             catch (Exception e)
             {
@@ -194,12 +199,11 @@ namespace DDBotGui
         {
             try
             {
+                currentPort.Encoding = System.Text.Encoding.GetEncoding(28591);
                 currentPort.Open();
-                Thread.Sleep(1000);
                 int count = currentPort.BytesToRead;
 
                 //ComPort.name = returnMessage;
-                currentPort.Close();
                 string helloMessage = readBytesFromSerial(HELLO_MESSAGE.Length);
                 if (helloMessage == HELLO_MESSAGE)
                 {
@@ -207,6 +211,7 @@ namespace DDBotGui
                 }
                 else
                 {
+                    currentPort.Close();
                     return false;
                 }
             }
@@ -258,8 +263,7 @@ namespace DDBotGui
             }
             else if (serialCommRB.Checked && sender == serialCommRB)
             {
-
-                setStatus("ERROR: Serial not implemented yet!", Color.Red);
+                SetComPort();
             }
         }
 
@@ -320,7 +324,7 @@ namespace DDBotGui
                 isConnected = stopBtn.Enabled = manualBtn.Enabled
                     = restartBtn.Enabled = leftSpeedTb.Enabled = rightSpeedTb.Enabled = value;
             }
-         
+
         }
 
         private void timerTick()
@@ -332,9 +336,6 @@ namespace DDBotGui
                 {
                     if (!isConnected)
                         continue;
-                    log("Updating...");
-
-
                     byte state = GetByte(Requests.SERIAL_REQUEST_STATE);
 
                     byte leftPower = GetByte(Requests.SERIAL_REQUEST_LEFT_POWER);
@@ -354,9 +355,6 @@ namespace DDBotGui
 
                     //byte rightSpeed = GetByte(Requests.SERIAL_UPDATE_RIGHT_SPEED);
                     int rightDelta = GetUint32(Requests.SERIAL_REQUEST_RIGHT_DELTA);
-
-                    log("Updated");
-
 
                     this.Invoke((MethodInvoker)delegate
                         {
@@ -379,33 +377,17 @@ namespace DDBotGui
                 {
                     log("ERROR: " + ex.Message);
                     setIsConnected(false);
-                    listenToConnection();
+                    if (socketCommRb.Checked)
+                    {
+                        listenToConnection();
+                    }
+                    else if (serialCommRB.Checked)
+                    {
+                        SetComPort();
+                    }
                 }
 
                 Thread.Sleep(40);
-
-                /*
-            case SERIAL_REQUEST_LEFT_POWER:
-          Serial.write((char)left.spinState.speed);
-          break;
-        case SERIAL_REQUEST_RIGHT_POWER:
-          Serial.write((char)right.spinState.speed);
-          break;
-        case SERIAL_REQUEST_LEFT_DELTA:
-          Serial.write(&left.spinState.lastDelta, sizeof(left.spinState.lastDelta))
-          break;
-        case SERIAL_REQUEST_RIGHT_DELTA:
-          Serial.write(&right.spinState.lastDelta, sizeof(right.spinState.lastDelta))
-          break;
-        case SERIAL_UPDATE_LEFT_SPEED:
-          left.spinData.speed = value;
-          break
-        case SERIAL_UPDATE_RIGHT_SPEED:
-          right.spinData.speed = value;
-          break;
-        case SERIAL_UPDATE_TARGET_SPEED:
-          targetTime = value;
-          break;*/
             }
         }
 
