@@ -13,8 +13,8 @@
 
 #include "stub.h"
 
-// const char IP[] = "127.0.0.1";
-const char IP[] = "10.133.7.101";
+const char IP[] = "127.0.0.1";
+// const char IP[] = "10.133.7.101";
 int sock;
 uint32_t start_time;
 
