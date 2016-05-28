@@ -20,7 +20,7 @@ LEFT_MOTOR_LOCATION = (730, 200)
 RIGHT_MOTOR_LOCATION = (490, 220)
 
 ARM_SIZE = (10, 100)
-SCREEN_SIZE = (1024, 768)
+SCREEN_SIZE = (990, 768)
 
 BGCOLOR = (255, 255, 255)
 
@@ -173,6 +173,10 @@ class DDBot(Game):
             print "Client disconnected.",
             self.acceptClient()
             return
+        if len(data) != 12:
+            print "Unexpected data length:", len(data), data
+            print data.encode('hex')
+
         cmdType, pinNumber, value = struct.unpack("<III", data)
         result = self.handleCommand(cmdType, pinNumber, value)
         if result is not None:
