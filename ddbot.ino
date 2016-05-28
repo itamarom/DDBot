@@ -54,10 +54,10 @@ void spin(Servo s, int speed) {
 }
 
 void initArm(Arm* arm, char id, int jagPort, int switchPort) {
-    memset(arm, 0, sizeof(arm));
+    memset(arm, 0, sizeof(*arm));
     arm->id = id;
 
-    arm->switchPort = switchPort
+    arm->switchPort = switchPort;
     pinMode(switchPort, INPUT);
 
     arm->jag.attach(jagPort);
@@ -80,12 +80,12 @@ void transitionState(state nextState) {
   currentState = nextState;
 }
 
-void alignArm(struct ArmState *arm) {
+void alignArm(struct Arm *arm) {
   if (digitalRead(arm->switchPort)) {
-      arm->alignState->isAligned = true;
+      arm->alignState.isAligned = true;
   }
 
-  if (arm->alignState->isAligned) {
+  if (arm->alignState.isAligned) {
     spin(arm->jag, 0);
   } else {
     spin(arm->jag, ALIGNING_SPEED);
@@ -112,8 +112,8 @@ void updateStart() {
 }
 
 void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
-  struct spinState *self = &selfArm->spinState;
-  struct spinState *other = &otherArm->spinState;
+  struct Arm::spinState *self = &selfArm->spinState;
+  struct Arm::spinState *other = &otherArm->spinState;
 
   unsigned long delta = now - self->lastSeen;
   if (delta < 100000) {
@@ -157,7 +157,7 @@ void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
 }
 
 void updateRunningArm(unsigned long now, struct Arm* self, struct Arm* other) {
-  struct spinState *spinState = &self.spinState;
+  struct Arm::spinState *spinState = &self->spinState;
 
   spin(self->jag, spinState->speed + spinState->tempBonus);
 
@@ -177,22 +177,22 @@ void updateRunning() {
   unsigned long now = micros();
 
   if (initOnNextRun) {
-    memset(&leftArm->spinState, 0, sizeof(leftArm->spinState));
-    memset(&rightArm->spinState, 0, sizeof(rightArm->spinState));
+    memset(&leftArm.spinState, 0, sizeof(leftArm.spinState));
+    memset(&rightArm.spinState, 0, sizeof(rightArm.spinState));
 
-    leftArm->spinState.speed = rightArm->spinState.speed = BASE_RUNNING_SPEED;
+    leftArm.spinState.speed = rightArm.spinState.speed = BASE_RUNNING_SPEED;
     initOnNextRun = false;
   }
 
   updateRunningArm(now, &leftArm, &rightArm);
   updateRunningArm(now, &rightArm, &leftArm);
 
-  if (abs(leftArm->spinState.speed - rightArm->spinState.speed) > 40) {
+  if (abs(leftArm.spinState.speed - rightArm.spinState.speed) > 40) {
     transitionState(STATE_START);
     initOnNextRun = true;
   }
   if (rand() % 10 == 0)
-    printf("Right: %d, Left: %d\n", rightSpin.speed, leftSpin.speed);
+    printf("Right: %d, Left: %d\n", leftArm.spinState.speed, rightArm.spinState.speed);
 }
 
 void stopAll() {
