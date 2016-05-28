@@ -68,10 +68,10 @@ class Game(object):
                 else:
                     self.handleEvent(event)
                      
-            currentTime = time.time()
-            if currentTime - self.lastLoop < self.loopDelay:
-                time.sleep(self.lastLoop + self.loopDelay - currentTime)
-            self.lastLoop = currentTime
+            #currentTime = time.time()
+            #if currentTime - self.lastLoop < self.loopDelay:
+            #    time.sleep(self.lastLoop + self.loopDelay - currentTime)
+            #self.lastLoop = currentTime
             self.update()
             self.draw()
             pygame.display.flip()
@@ -96,6 +96,7 @@ class SpinningArm(object):
         self.currentInput = 0
         self.switchAngle = switchAngle
         self.switchPos = map(int, rotPoint((position[0], position[1] - 50), position, -switchAngle))
+        self.last_set_servo = 0
         
     def update(self):
         self.angle = (self.angle + BASE_SPEED * randfloat(0.97, 1.03) * self.currentInput * self.speedFactor) % 360
@@ -110,6 +111,10 @@ class SpinningArm(object):
         
     def setServo(self, value):
         self.currentInput = calcServoSpeed(value)
+        currentTime = time.time()
+        delta = currentTime - self.last_set_servo
+        print "Update in", delta, "secs (", (1 / delta), " fps)"
+        self.last_set_servo = currentTime
         
     def getMicroswitchValue(self):
         return int(abs(self.angle - self.switchAngle) < MICROSWITCH_ANGLE_RANGE)
