@@ -13,6 +13,16 @@ typedef enum {
   STATE_RUNNING,
 } state;
 
+typedef enum {
+  SERIAL_REQUEST_LEFT_POWER  = 0,
+  SERIAL_REQUEST_RIGHT_POWER = 1,
+  SERIAL_REQUEST_LEFT_DELTA  = 2,
+  SERIAL_REQUEST_RIGHT_DELTA = 3,
+  SERIAL_UPDATE_LEFT_SPEED   = 4,
+  SERIAL_UPDATE_RIGHT_SPEED  = 5,
+  SERIAL_UPDATE_TARGET_SPEED = 6,
+} serial_commands;
+
 const int ALIGNING_SPEED = 20;
 const int BASE_RUNNING_SPEED = 80;
 
@@ -23,7 +33,7 @@ const int LEFT_SWITCH_PIN = 12;
 const int RIGHT_SWITCH_PIN = 13;
 
 const int DELAY_AFTER_ALIGNMENT = 3000;
-const unsigned long TARGET_TIME = 1000000;
+unsigned long targetTime = 1000000;
 
 struct Arm {
   char id;
@@ -145,13 +155,13 @@ void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
   }
   self->badDeltaCount = 0;
 
-  if (delta < 0.7 * TARGET_TIME) {
+  if (delta < 0.7 * targetTime) {
     printf("Way too fast %c...\n", selfArm->id);
     self->speed -= 2;
-  } else if (delta < TARGET_TIME) {
+  } else if (delta < targetTime) {
     printf("Too fast %c...\n", selfArm->id);
     self->speed -= 1;
-  } else if (delta > TARGET_TIME * 1.5) {
+  } else if (delta > targetTime * 1.5) {
     printf("Way too slow %c...\n", selfArm->id);
     self->speed += 2;
   } else {
@@ -217,6 +227,40 @@ void stopAll() {
   spin(rightArm.jag, 0);
 }
 
+void handleSerial() {
+  unsigned long command;
+  unsigned long value;
+  if (!Serial.available()) {
+    return;
+  }
+
+  Serial.readBytes((char*)&command, sizeof(command));
+  Serial.readBytes((char*)&value, sizeof(value));
+  switch(command) {
+    case SERIAL_REQUEST_LEFT_POWER:
+      Serial.write((char)leftArm.spinState.speed);
+      break;
+    case SERIAL_REQUEST_RIGHT_POWER:
+      Serial.write((char)rightArm.spinState.speed);
+      break;
+    case SERIAL_REQUEST_LEFT_DELTA:
+      Serial.write((char*)&leftArm.spinState.lastDelta, sizeof(leftArm.spinState.lastDelta));
+      break;
+    case SERIAL_REQUEST_RIGHT_DELTA:
+      Serial.write((char*)&rightArm.spinState.lastDelta, sizeof(rightArm.spinState.lastDelta));
+      break;
+    case SERIAL_UPDATE_LEFT_SPEED:
+      leftArm.spinState.speed = value;
+      break;
+    case SERIAL_UPDATE_RIGHT_SPEED:
+      rightArm.spinState.speed = value;
+      break;
+    case SERIAL_UPDATE_TARGET_SPEED:
+      targetTime = value;
+      break;
+  }
+}
+
 void loop() {
   switch (currentState) {
     case STATE_START:
@@ -231,9 +275,7 @@ void loop() {
   }
   // displayDigit(currentState);
 
-  if (Serial.available()) {
-    handleSerial();
-  }
+  handleSerial();
   delay(20);
 }
 

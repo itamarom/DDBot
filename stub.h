@@ -26,6 +26,7 @@ public:
     void write(char value);
     void write(std::string str);
     void write(char *buf, int len);
+    void readBytes(char *buf, int len);
 private:
     int sock;
 };
