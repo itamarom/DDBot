@@ -1,0 +1,10 @@
+{
+  "builtInLibrariesFolders": "",
+  "customBuildProperties": "",
+  "fqbn": "arduino:avr:uno",
+  "hardwareFolders": "/home/joey/arduino/arduino-1.6.9/hardware",
+  "otherLibrariesFolders": "/home/joey/arduino/arduino-1.6.9/libraries",
+  "runtime.ide.version": "10600",
+  "sketchLocation": "/home/joey/Arduino/ms-forreal/DDBot/ddbot.ino",
+  "toolsFolders": "/home/joey/arduino/arduino-1.6.9/hardware/tools,/home/joey/arduino/arduino-1.6.9/tools-builder/"
+}
