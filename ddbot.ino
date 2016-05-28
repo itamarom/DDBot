@@ -50,7 +50,18 @@ state currentState = STATE_START;
 void displayDigit(int digit);
 
 void spin(Servo s, int speed) {
-  s.write(map(speed, -100, 100, 0, 180));
+  speed = map(speed, -100, 100, 0, 180);
+
+  // As long as the input speed is between -100 and 100 this should
+  // never happen
+  // Double check anyways since BAD things will happen if this goes wrong.
+  // Also, we never enforce the input speed places in the code
+  if (speed < 0) {
+    speed = 0;
+  } else if (speed > 180) {
+    speed = 180;
+  }
+  s.write(speed);
 }
 
 void initArm(Arm* arm, char id, int jagPort, int switchPort) {
@@ -145,12 +156,12 @@ void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
     self->speed += 1;
   }
 
-  if (now - other->lastSeen < delta * 0.5 && now - other->lastSeen > delta * 0.1) {
+  if (now - other->lastSeen < delta * 0.5 && now - other->lastSeen > delta * 0.05) {
     printf("Adjusting speed! Give a kick to %c...\n", selfArm->id);
     self->tempBonus = 5;
     self->frameCount = 20;
-    other->tempBonus = 0;
-    other->frameCount = 0;
+    other->tempBonus = -5;
+    other->frameCount = 20;
   } else {
     printf("Synced! %f\n", (now - other->lastSeen)/(double)(delta));
   }
