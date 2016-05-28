@@ -1,4 +1,5 @@
 import os
+import sys
 import math
 import time
 import random
@@ -13,13 +14,10 @@ SERVER_PORT = 1337
 pygame.font.init()
 my_font = pygame.font.SysFont("arial", 32)
 
-#bg_img = pygame.image.load("background.jpg")
-arm_img = pygame.image.load("arm.png")
-
 DigitalRead, DigitalWrite, ServoWrite = xrange(3)
 
-LEFT_MOTOR_LOCATION = (650, 200)
-RIGHT_MOTOR_LOCATION = (500, 180)
+LEFT_MOTOR_LOCATION = (730, 200)
+RIGHT_MOTOR_LOCATION = (490, 220)
 
 ARM_SIZE = (10, 100)
 SCREEN_SIZE = (1024, 768)
@@ -104,7 +102,7 @@ class SpinningArm(object):
         # self.angle = (self.angle + BASE_SPEED * self.currentInput * self.speedFactor) % 360
         
     def draw(self):
-        rot_img = pygame.transform.rotate(arm_img, self.angle)
+        rot_img = pygame.transform.rotate(self.game.arm_img, self.angle)
         rect = rot_img.get_rect()
         rect.center = self.position
         self.game.screen.blit(rot_img, rect)
@@ -124,10 +122,14 @@ class KeyState(object):
         return win32api.GetAsyncKeyState(vkey)
   
 class DDBot(Game):
-    def __init__(self):
+    def __init__(self, no_network=False):
         super(DDBot, self).__init__()
-        self.right = SpinningArm(RIGHT_MOTOR_LOCATION, self, reverse=True, switchAngle=130)
-        self.left = SpinningArm(LEFT_MOTOR_LOCATION, self, switchAngle=230)
+        
+        self.bg_img = pygame.image.load("bgcut.png").convert()
+        self.arm_img = pygame.image.load("arm2.png").convert_alpha()
+        
+        self.right = SpinningArm(RIGHT_MOTOR_LOCATION, self, reverse=True, switchAngle=160)
+        self.left = SpinningArm(LEFT_MOTOR_LOCATION, self, switchAngle=190)
         self.breadBoard = { 10: self.right.setServo, 11: self.left.setServo,
                             12: self.left.getMicroswitchValue, 13: self.right.getMicroswitchValue}
 
@@ -136,7 +138,14 @@ class DDBot(Game):
         self.listening_socket.listen(5)
         self.client = None
         
-        self.acceptClient()
+        self.bg_rect = self.bg_img.get_rect()
+        #self.bg_rect.left = -720
+        self.bg_rect.top = 80
+        
+        self.no_network = no_network
+        
+        if not no_network:
+            self.acceptClient()
         
     def acceptClient(self):
         print "Accepting...",
@@ -182,24 +191,21 @@ class DDBot(Game):
     def handleEvent(self, event):
         return
         #if event.type == pygame.MOUSEMOTION:
-        #    aim_rect.left = event.pos[0] - aim_rect.width / 2
-        #    aim_rect.top = event.pos[1] - aim_rect.height / 2
+        #    print event.pos[0], event.pos[1]
         #elif event.type == pygame.MOUSEBUTTONDOWN:
-        #    bullet_hits.append((event.pos[0], event.pos[1]))            
-        #    
-        #    shoot_sound.play()
-        #    if target_rect.colliderect(aim_rect):
-        #        score += 1  
-        #        place_target_in_random_location()    
+        #    print event.pos[0], event.pos[1]
                 
     def update(self):
-        self.readFromClient()
+        if not self.no_network:
+            self.readFromClient()
         self.left.update()
         self.right.update()
         #print "Update", time.time()
         
     def draw(self):
         self.screen.fill(BGCOLOR)
+
+        self.screen.blit(self.bg_img, self.bg_rect)
         self.left.draw()
         self.right.draw()
         
@@ -216,7 +222,7 @@ class DDBot(Game):
         #                           1, (255, 0, 0)), (50, 50))
         
 def main():
-    game = DDBot()
+    game = DDBot(no_network='-n' in sys.argv)
     game.run()
 
 if __name__ == "__main__":
