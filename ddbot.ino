@@ -18,14 +18,32 @@ const int BASE_RUNNING_SPEED = 80;
 const int RIGHT_PWM_PIN = 10;
 const int LEFT_PWM_PIN = 11;
 
-const int SWITCH_LEFT_PIN = 12;
-const int SWITCH_RIGHT_PIN = 13;
+const int LEFT_SWITCH_PIN = 12;
+const int RIGHT_SWITCH_PIN = 13;
 
 const int DELAY_AFTER_ALIGNMENT = 3000;
-const int TARGET_TIME = 1000000;
+const unsigned long TARGET_TIME = 1000000;
 
-Servo leftJag;
-Servo rightJag;
+struct Arm {
+  char id;
+  Servo jag;
+  int switchPort;
+
+  struct alignState {
+      bool isAligned;
+  } alignState;
+  struct spinState {
+      int speed;
+      unsigned long lastSeen;
+      unsigned long lastDelta;
+      unsigned long badDeltaCount;
+      int tempBonus;
+      int frameCount;
+  } spinState;
+};
+
+struct Arm leftArm;
+struct Arm rightArm;
 
 state currentState = STATE_START;
 
@@ -35,19 +53,24 @@ void spin(Servo s, int speed) {
   s.write(map(speed, -100, 100, 0, 180));
 }
 
+void initArm(Arm* arm, char id, int jagPort, int switchPort) {
+    memset(arm, 0, sizeof(arm));
+    arm->id = id;
+
+    arm->switchPort = switchPort
+    pinMode(switchPort, INPUT);
+
+    arm->jag.attach(jagPort);
+    spin(arm->jag, 0);
+}
+
 void setup() {
   for (int i=2; i < 10; i++) {
     pinMode(i, OUTPUT);
   }
 
-  pinMode(SWITCH_LEFT_PIN, INPUT);
-  pinMode(SWITCH_RIGHT_PIN, INPUT);
-
-  leftJag.attach(LEFT_PWM_PIN);
-  rightJag.attach(RIGHT_PWM_PIN);
-
-  spin(leftJag, 0);
-  spin(rightJag, 0);
+  initArm(&leftArm,  'L', LEFT_PWM_PIN,  LEFT_SWITCH_PIN);
+  initArm(&rightArm, 'R', RIGHT_PWM_PIN, RIGHT_SWITCH_PIN);
 }
 
 const int FACTOR = 5;
@@ -57,47 +80,41 @@ void transitionState(state nextState) {
   currentState = nextState;
 }
 
-void updateStart() {
-  static bool leftAligned = false;
-  static bool rightAligned = false;
-
-  if (digitalRead(SWITCH_RIGHT_PIN)) {
-      rightAligned = true;
-  };
-  if (digitalRead(SWITCH_LEFT_PIN)) {
-      leftAligned = true;
-  };
-
-  if (rightAligned) {
-    spin(rightJag, 0);
-  } else {
-    spin(rightJag, ALIGNING_SPEED);
+void alignArm(struct ArmState *arm) {
+  if (digitalRead(arm->switchPort)) {
+      arm->alignState->isAligned = true;
   }
 
-  if (leftAligned) {
-    spin(leftJag, 0);
+  if (arm->alignState->isAligned) {
+    spin(arm->jag, 0);
   } else {
-    spin(leftJag, ALIGNING_SPEED);
-  }
-
-  if (leftAligned && rightAligned) {
-    delay(DELAY_AFTER_ALIGNMENT);
-    transitionState(STATE_RUNNING);
-    leftAligned = rightAligned = false;
+    spin(arm->jag, ALIGNING_SPEED);
   }
 }
 
-typedef struct {
-  int id;
-  int speed;
-  unsigned long lastSeen;
-  unsigned long lastDelta;
-  unsigned long badDeltaCount;
-  int tempBonus;
-  int frameCount;
-} timeInfo;
+void updateStart() {
+  static bool initOnNextRun = true;
 
-void updateSpeed(unsigned long now, timeInfo *self, timeInfo *other) {
+  if (initOnNextRun) {
+    memset(&leftArm.alignState, 0, sizeof(leftArm.alignState));
+    memset(&rightArm.alignState, 0, sizeof(rightArm.alignState));
+    initOnNextRun = false;
+  }
+
+  alignArm(&leftArm);
+  alignArm(&rightArm);
+
+  if (leftArm.alignState.isAligned && rightArm.alignState.isAligned) {
+    delay(DELAY_AFTER_ALIGNMENT);
+    transitionState(STATE_RUNNING);
+    initOnNextRun = true;
+  }
+}
+
+void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
+  struct spinState *self = &selfArm->spinState;
+  struct spinState *other = &otherArm->spinState;
+
   unsigned long delta = now - self->lastSeen;
   if (delta < 100000) {
     // Ignore small deltas, they are probably the same button press.
@@ -126,64 +143,61 @@ void updateSpeed(unsigned long now, timeInfo *self, timeInfo *other) {
   }
 
   if (now - other->lastSeen < delta * 0.5 && now - other->lastSeen > delta * 0.1) {
-    printf("Adjusting speed! Give a kick to %d...\n", self->id);
+    printf("Adjusting speed! Give a kick to %c...\n", selfArm->id);
     self->tempBonus = 10;
     self->frameCount = 20;
     other->tempBonus = 0;
     other->frameCount = 0;
   } else {
-    printf("Synced! %f\n", (now - other->lastSeen)/(double)(TARGET_TIME));
+    printf("Synced! %f\n", (now - other->lastSeen)/(double)(delta));
   }
 
-  self->lastDelta = now - self->lastSeen;
+  self->lastDelta = delta;
   self->lastSeen = now;
 }
 
+void updateRunningArm(unsigned long now, struct Arm* self, struct Arm* other) {
+  struct spinState *spinState = &self.spinState;
+
+  spin(self->jag, spinState->speed + spinState->tempBonus);
+
+  if (spinState->frameCount) {
+    if(--spinState->frameCount <= 0) {
+      spinState->tempBonus = 0;
+    }
+  }
+
+  if (digitalRead(self->switchPort)) {
+    onSwitchHit(now, self, other);
+  }
+}
+
 void updateRunning() {
-  static timeInfo leftSpeed, rightSpeed;
   static bool initOnNextRun = true;
   unsigned long now = micros();
 
   if (initOnNextRun) {
-    memset(&leftSpeed, 0, sizeof(leftSpeed));
-    memset(&rightSpeed, 0, sizeof(rightSpeed));
-    leftSpeed.speed = rightSpeed.speed = 80;
-    leftSpeed.id = 1;
+    memset(&leftArm->spinState, 0, sizeof(leftArm->spinState));
+    memset(&rightArm->spinState, 0, sizeof(rightArm->spinState));
+
+    leftArm->spinState.speed = rightArm->spinState.speed = BASE_RUNNING_SPEED;
     initOnNextRun = false;
   }
 
-  spin(leftJag, leftSpeed.speed + leftSpeed.tempBonus);
-  spin(rightJag, rightSpeed.speed + rightSpeed.tempBonus);
-  if (leftSpeed.frameCount) {
-    if(--leftSpeed.frameCount == 0) {
-      leftSpeed.tempBonus = 0;
-    }
-  }
-  if (rightSpeed.frameCount) {
-    if(--rightSpeed.frameCount == 0) {
-      rightSpeed.tempBonus = 0;
-    }
-  }
+  updateRunningArm(now, &leftArm, &rightArm);
+  updateRunningArm(now, &rightArm, &leftArm);
 
-  if (digitalRead(SWITCH_RIGHT_PIN)) {
-    updateSpeed(now, &rightSpeed, &leftSpeed);
-  }
-  if (digitalRead(SWITCH_LEFT_PIN)) {
-    updateSpeed(now, &leftSpeed, &rightSpeed);
-  }
-
-  if (leftSpeed.speed - rightSpeed.speed > 40 || rightSpeed.speed - leftSpeed.speed > 40) {
+  if (abs(leftArm->spinState.speed - rightArm->spinState.speed) > 40) {
     transitionState(STATE_START);
     initOnNextRun = true;
   }
   if (rand() % 10 == 0)
-    printf("Right: %d, Left: %d\n", rightSpeed.speed, leftSpeed.speed);
-
+    printf("Right: %d, Left: %d\n", rightSpin.speed, leftSpin.speed);
 }
 
 void stopAll() {
-  spin(leftJag, 0);
-  spin(rightJag, 0);
+  spin(leftArm.jag, 0);
+  spin(rightArm.jag, 0);
 }
 
 void loop() {
@@ -207,6 +221,7 @@ void clearDigit() {
       digitalWrite(j, HIGH);
   }
 }
+
 void displayDigit(int i) {
   clearDigit();
   if (i != 1 && i != 4) {

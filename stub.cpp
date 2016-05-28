@@ -1,3 +1,4 @@
+#ifdef SIMULATOR
 #include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <stdio.h>
@@ -113,3 +114,5 @@ void delay(int milliseconds) {
 unsigned long micros() {
   return _micros() - start_time;
 }
+
+#endif
