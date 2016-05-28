@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+Serial Serial;
 #endif
 
 typedef enum {
@@ -30,15 +31,15 @@ struct Arm {
   int switchPort;
 
   struct alignState {
-      bool isAligned;
+    bool isAligned;
   } alignState;
   struct spinState {
-      int speed;
-      unsigned long lastSeen;
-      unsigned long lastDelta;
-      unsigned long badDeltaCount;
-      int tempBonus;
-      int frameCount;
+    int speed;
+    unsigned long lastSeen;
+    unsigned long lastDelta;
+    unsigned long badDeltaCount;
+    int tempBonus;
+    int frameCount;
   } spinState;
 };
 
@@ -65,14 +66,14 @@ void spin(Servo s, int speed) {
 }
 
 void initArm(Arm* arm, char id, int jagPort, int switchPort) {
-    memset(arm, 0, sizeof(*arm));
-    arm->id = id;
+  memset(arm, 0, sizeof(*arm));
+  arm->id = id;
 
-    arm->switchPort = switchPort;
-    pinMode(switchPort, INPUT);
+  arm->switchPort = switchPort;
+  pinMode(switchPort, INPUT);
 
-    arm->jag.attach(jagPort);
-    spin(arm->jag, 0);
+  arm->jag.attach(jagPort);
+  spin(arm->jag, 0);
 }
 
 void setup() {
@@ -80,6 +81,8 @@ void setup() {
     pinMode(i, OUTPUT);
   }
 
+  Serial.begin(9600);
+  Serial.write("HELO");
   initArm(&leftArm,  'L', LEFT_PWM_PIN,  LEFT_SWITCH_PIN);
   initArm(&rightArm, 'R', RIGHT_PWM_PIN, RIGHT_SWITCH_PIN);
 }
@@ -93,7 +96,7 @@ void transitionState(state nextState) {
 
 void alignArm(struct Arm *arm) {
   if (digitalRead(arm->switchPort)) {
-      arm->alignState.isAligned = true;
+    arm->alignState.isAligned = true;
   }
 
   if (arm->alignState.isAligned) {
@@ -156,12 +159,12 @@ void onSwitchHit(unsigned long now, struct Arm *selfArm, struct Arm *otherArm) {
     self->speed += 1;
   }
 
-  if (now - other->lastSeen < delta * 0.5 && now - other->lastSeen > delta * 0.05) {
+  if (now - other->lastSeen < delta * 0.5 && now - other->lastSeen > delta * 0.15) {
     printf("Adjusting speed! Give a kick to %c...\n", selfArm->id);
-    self->tempBonus = 5;
-    self->frameCount = 20;
-    other->tempBonus = -5;
-    other->frameCount = 20;
+    self->tempBonus = 10;
+    self->frameCount = 30;
+    other->tempBonus = -10;
+    other->frameCount = 30;
   } else {
     printf("Synced! %f\n", (now - other->lastSeen)/(double)(delta));
   }
@@ -225,22 +228,26 @@ void loop() {
     default:
       stopAll();
       break;
-    }
+  }
   // displayDigit(currentState);
+
+  if (Serial.available()) {
+    handleSerial();
+  }
   delay(20);
 }
 
 void clearDigit() {
   for (int j = 0; j < 10; j++) {
-      digitalWrite(j, HIGH);
+    digitalWrite(j, HIGH);
   }
 }
 
 void displayDigit(int i) {
   clearDigit();
   if (i != 1 && i != 4) {
-      // TOP BAR
-      digitalWrite(8, LOW);
+    // TOP BAR
+    digitalWrite(8, LOW);
   }
   if (i != 1 && i != 2 && i != 3 && i != 7) {
     // TOP LEFT
